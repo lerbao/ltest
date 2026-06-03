@@ -6,7 +6,6 @@
 #include <vector>
 #include <string>
 #include <algorithm>
-#include <atomic>
 #include <Shlwapi.h>
 
 #pragma comment(lib, "Shlwapi.lib")
@@ -23,10 +22,10 @@ HANDLE g_eventThread = NULL;
 std::vector<std::wstring> g_videoFiles;
 int g_currentIndex = 0;
 CRITICAL_SECTION g_cs;
-std::atomic<bool> g_isPlaying(false);
-std::atomic<int> g_retryCount(0);
-std::atomic<bool> g_mpvError(false);
-std::atomic<bool> g_isResetting(false);
+bool g_isPlaying = false;
+int g_retryCount = 0;
+bool g_mpvError = false;
+bool g_isResetting = false;
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 DWORD WINAPI TimerThread(LPVOID lpParam);
@@ -34,6 +33,7 @@ DWORD WINAPI EventThread(LPVOID lpParam);
 void ScanVideos();
 bool PlayNextVideo();
 bool ResetMPV();
+BOOL IsWindows7();
 
 int APIENTRY _tWinMain(HINSTANCE hInstance,
                        HINSTANCE hPrevInstance,
@@ -50,15 +50,8 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
     PathRemoveFileSpecW(exePath);
 
     WCHAR dllPath[MAX_PATH];
-    BOOL isWin7 = FALSE;
-
-    OSVERSIONINFOEXW osvi;
-    ZeroMemory(&osvi, sizeof(OSVERSIONINFOEXW));
-    osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEXW);
-    GetVersionExW((LPOSVERSIONINFOW)&osvi);
-
-    if (osvi.dwMajorVersion == 6 && osvi.dwMinorVersion == 1) {
-        isWin7 = TRUE;
+    
+    if (IsWindows7()) {
         swprintf(dllPath, sizeof(dllPath)/sizeof(WCHAR), L"%s\\..\\lib\\lib_win7", exePath);
     } else {
         swprintf(dllPath, sizeof(dllPath)/sizeof(WCHAR), L"%s\\..\\lib\\lib_win10", exePath);
@@ -128,6 +121,19 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
 
     DeleteCriticalSection(&g_cs);
     return (int) msg.wParam;
+}
+
+BOOL IsWindows7()
+{
+    OSVERSIONINFOEXW osvi;
+    ZeroMemory(&osvi, sizeof(OSVERSIONINFOEXW));
+    osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEXW);
+    
+    if (!GetVersionExW((LPOSVERSIONINFOW)&osvi)) {
+        return FALSE;
+    }
+    
+    return (osvi.dwMajorVersion == 6 && osvi.dwMinorVersion == 1);
 }
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -201,12 +207,12 @@ bool ResetMPV()
 {
     EnterCriticalSection(&g_cs);
 
-    while (g_isResetting.load()) {
+    while (g_isResetting) {
         LeaveCriticalSection(&g_cs);
         Sleep(10);
         EnterCriticalSection(&g_cs);
     }
-    g_isResetting.store(true);
+    g_isResetting = true;
 
     if (g_mpv) {
         mpv_terminate_destroy(g_mpv);
@@ -215,7 +221,7 @@ bool ResetMPV()
 
     g_mpv = mpv_create();
     if (!g_mpv) {
-        g_isResetting.store(false);
+        g_isResetting = false;
         LeaveCriticalSection(&g_cs);
         return false;
     }
@@ -226,11 +232,7 @@ bool ResetMPV()
 
     mpv_set_option_string(g_mpv, "vo", "gpu");
 
-    OSVERSIONINFOEXW osvi;
-    ZeroMemory(&osvi, sizeof(OSVERSIONINFOEXW));
-    osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEXW);
-    GetVersionExW((LPOSVERSIONINFOW)&osvi);
-    if (osvi.dwMajorVersion == 6 && osvi.dwMinorVersion == 1) {
+    if (IsWindows7()) {
         mpv_set_option_string(g_mpv, "gpu-api", "angle");
     }
 
@@ -254,15 +256,15 @@ bool ResetMPV()
     if (mpv_initialize(g_mpv) < 0) {
         mpv_terminate_destroy(g_mpv);
         g_mpv = NULL;
-        g_isResetting.store(false);
+        g_isResetting = false;
         LeaveCriticalSection(&g_cs);
         return false;
     }
 
-    g_mpvError.store(false);
-    g_retryCount.store(0);
+    g_mpvError = false;
+    g_retryCount = 0;
 
-    g_isResetting.store(false);
+    g_isResetting = false;
     LeaveCriticalSection(&g_cs);
     return true;
 }
@@ -271,7 +273,7 @@ bool PlayNextVideo()
 {
     EnterCriticalSection(&g_cs);
 
-    while (g_isResetting.load()) {
+    while (g_isResetting) {
         LeaveCriticalSection(&g_cs);
         Sleep(10);
         EnterCriticalSection(&g_cs);
@@ -307,7 +309,7 @@ bool PlayNextVideo()
     delete[] cpath;
 
     if (result < 0) {
-        g_mpvError.store(true);
+        g_mpvError = true;
         LeaveCriticalSection(&g_cs);
         return false;
     }
@@ -317,8 +319,8 @@ bool PlayNextVideo()
         g_currentIndex = 0;
     }
 
-    g_isPlaying.store(true);
-    g_retryCount.store(0);
+    g_isPlaying = true;
+    g_retryCount = 0;
 
     LeaveCriticalSection(&g_cs);
     return true;
@@ -331,14 +333,18 @@ DWORD WINAPI TimerThread(LPVOID lpParam)
     while (true) {
         Sleep(SWITCH_INTERVAL);
 
-        bool needsReset = g_mpvError.load() || !g_isPlaying.load();
-        int retry = g_retryCount.load();
+        EnterCriticalSection(&g_cs);
+        bool needsReset = g_mpvError || !g_isPlaying;
+        int retry = g_retryCount;
+        LeaveCriticalSection(&g_cs);
 
         if (needsReset && retry < MAX_RETRY_COUNT) {
             if (ResetMPV()) {
                 PlayNextVideo();
             } else {
-                g_retryCount.fetch_add(1);
+                EnterCriticalSection(&g_cs);
+                g_retryCount++;
+                LeaveCriticalSection(&g_cs);
             }
         } else if (!needsReset) {
             PlayNextVideo();
@@ -355,7 +361,7 @@ DWORD WINAPI EventThread(LPVOID lpParam)
     while (true) {
         EnterCriticalSection(&g_cs);
 
-        if (g_isResetting.load() || !g_mpv) {
+        if (g_isResetting || !g_mpv) {
             LeaveCriticalSection(&g_cs);
             Sleep(50);
             continue;
@@ -373,21 +379,21 @@ DWORD WINAPI EventThread(LPVOID lpParam)
 
         EnterCriticalSection(&g_cs);
 
-        if (g_isResetting.load() || g_mpv != mpv) {
+        if (g_isResetting || g_mpv != mpv) {
             LeaveCriticalSection(&g_cs);
             continue;
         }
 
         switch (event->event_id) {
         case MPV_EVENT_START_FILE:
-            g_isPlaying.store(true);
-            g_mpvError.store(false);
+            g_isPlaying = true;
+            g_mpvError = false;
             break;
         case MPV_EVENT_END_FILE: {
-            g_isPlaying.store(false);
+            g_isPlaying = false;
             mpv_event_end_file* ef = (mpv_event_end_file*)event->data;
             if (ef->error != MPV_ERROR_SUCCESS) {
-                g_mpvError.store(true);
+                g_mpvError = true;
             }
             break;
         }

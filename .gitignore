@@ -1,0 +1,30 @@
+# Test videos - large files
+video/
+
+# IDE history
+.history/
+.trae/
+
+# Python cache
+__pycache__/
+
+# Log files
+*.log
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+
+# Build directories
+build/
+dist/
+
+# Visual Studio user files
+*.suo
+.vs/
+
+# Object files
+*.obj
+*.pdb
+*.ilk

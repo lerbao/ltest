@@ -1,5 +1,6 @@
-# Test videos - large files
+# Test videos - large files (keep README.md in video folder)
 video/
+!video/README.md
 
 # IDE history
 .history/

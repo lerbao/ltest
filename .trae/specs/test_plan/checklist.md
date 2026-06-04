@@ -1,0 +1,7 @@
+- [x] Checkpoint 1: 可执行文件 dist/VideoPlayer.exe 存在
+- [x] Checkpoint 2: MPV库文件 lib/mpv-2.dll 存在（MPV库已正确配置）
+- [x] Checkpoint 3: Python依赖已安装（PyQt5 5.15.11）
+- [x] Checkpoint 4: Python版本播放器启动成功（MPV已正常工作）
+- [x] Checkpoint 5: 已构建可执行文件启动成功
+- [x] Checkpoint 6: UI界面布局正常（播放按钮、进度条、音量控制、菜单）
+- [x] Checkpoint

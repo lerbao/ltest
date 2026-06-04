@@ -112,9 +112,37 @@ git push git@gitee.com:er_baocom/video-player.git HEAD:master --force
 | GitHub (`lerbao/ltest`) | ✅ 已同步 | `f38acfd` |
 | Gitee (`er_baocom/video-player`) | ✅ 已同步 | `f38acfd` |
 
+## 克隆仓库（含 LFS 文件）
+
+### 推荐方式（自动下载 LFS 文件）
+```bash
+# 使用 Git LFS 克隆（推荐）
+git lfs clone https://github.com/lerbao/ltest.git
+
+# 进入项目目录
+cd ltest
+```
+
+### 传统方式（需要手动拉取 LFS）
+```bash
+# 普通克隆
+git clone https://github.com/lerbao/ltest.git
+cd ltest
+
+# 手动拉取 LFS 文件
+git lfs pull
+```
+
+### 强制重新获取 LFS 文件（如果文件缺失）
+```bash
+git reset --hard HEAD
+git lfs pull
+```
+
 ## 注意事项
 
 1. **SSH代理**：每次新终端会话需要启动SSH代理并添加密钥
 2. **密钥安全**：不要将私钥文件提交到仓库
 3. **分支一致性**：保持GitHub和Gitee的`master`分支同步
 4. **大文件处理**：使用Git LFS处理大文件（如DLL、EXE）
+5. **克隆方式**：克隆本仓库时务必使用 `git lfs clone` 或克隆后执行 `git lfs pull`，否则 bin 目录和 lib 目录中的二进制文件将缺失
